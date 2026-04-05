@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DevOps AI Copilot v2</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; }
+    .header { background: #020617; padding: 18px 28px; border-bottom: 1px solid #1e293b;
+              display: flex; align-items: center; justify-content: space-between; }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header .version { font-size: 12px; color: #64748b; }
+    .container { max-width: 960px; margin: 28px auto; padding: 0 16px; }
+    .input-card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    textarea { width: 100%; height: 90px; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155;
+               background: #0f172a; color: #e2e8f0; font-family: 'Cascadia Code', monospace; font-size: 13px;
+               resize: vertical; }
+    .controls { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
+    button { padding: 10px 22px; border: none; border-radius: 8px; background: #2563eb;
+             color: white; cursor: pointer; font-size: 14px; font-weight: 600; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #334155; cursor: not-allowed; }
+    .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #94a3b8; cursor: pointer; }
+    .spinner { display: none; width: 18px; height: 18px; border: 2px solid #334155;
+               border-top-color: #2563eb; border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Agent trace */
+    .trace { background: #1e293b; border-radius: 12px; padding: 18px; margin-bottom: 20px; }
+    .trace h3 { font-size: 13px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 14px; }
+    .steps { display: flex; align-items: center; gap: 0; flex-wrap: wrap; gap: 6px; }
+    .step { display: flex; align-items: center; gap: 6px; background: #0f172a; border-radius: 8px;
+            padding: 8px 12px; font-size: 12px; border: 1px solid #334155; }
+    .step .dot { width: 8px; height: 8px; border-radius: 50%; background: #334155; }
+    .step.done .dot { background: #10b981; }
+    .step .tool-tag { font-size: 10px; color: #64748b; background: #1e293b;
+                      border-radius: 4px; padding: 1px 5px; margin-left: 4px; }
+
+    /* Metric cards */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 16px; }
+    .card .label { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: .06em; }
+    .card .value { font-size: 22px; font-weight: 700; margin-top: 6px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+    .badge.ai       { background: #064e3b; color: #34d399; }
+    .badge.fallback { background: #78350f; color: #fbbf24; }
+    .sev-Critical { color: #ef4444; }
+    .sev-High     { color: #f97316; }
+    .sev-Medium   { color: #f59e0b; }
+    .sev-Low      { color: #22c55e; }
+
+    /* Detail grid */
+    .grid4 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+    .detail-card { background: #1e293b; border-radius: 10px; padding: 14px; }
+    .detail-card .title { font-size: 11px; color: #64748b; margin-bottom: 8px; text-transform: uppercase; }
+    .detail-card .kv { display: flex; justify-content: space-between; margin: 4px 0; font-size: 12px; }
+    .detail-card .kv .k { color: #94a3b8; }
+    .detail-card .kv .v { color: #e2e8f0; font-weight: 500; max-width: 200px; text-align: right;
+                           overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Tabs for history */
+    .tabs { display: flex; gap: 4px; margin-bottom: 14px; }
+    .tab { padding: 7px 16px; border-radius: 8px; font-size: 13px; cursor: pointer; color: #94a3b8; }
+    .tab.active { background: #2563eb; color: white; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { text-align: left; padding: 8px 10px; color: #64748b; border-bottom: 1px solid #334155; }
+    td { padding: 8px 10px; border-bottom: 1px solid #1e293b; }
+    tr:hover td { background: #1e293b; }
+
+    #results { display: none; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>🚀 DevOps AI Copilot</h1>
+  <span class="version">v2.0 · 5 Agents · 3 MCP Servers</span>
+</div>
+
+<div class="container">
+  <div class="input-card">
+    <textarea id="log" placeholder="Paste system log here...
+e.g.  ERROR: Connection refused to db-host:5432 after 3 retries"></textarea>
+    <div class="controls">
+      <button id="btn" onclick="analyze()">Analyse Log</button>
+      <div class="spinner" id="spinner"></div>
+      <label class="toggle-label">
+        <input type="checkbox" id="aiToggle"> Enable AI Mode (Gemini)
+      </label>
+    </div>
+  </div>
+
+  <div id="results">
+    <!-- Agent trace -->
+    <div class="trace">
+      <h3>Agent execution trace</h3>
+      <div class="steps" id="steps"></div>
+    </div>
+
+    <!-- Metrics -->
+    <div class="grid2">
+      <div class="card">
+        <div class="label">Analysis mode</div>
+        <div class="value" id="m-mode"></div>
+      </div>
+      <div class="card">
+        <div class="label">Severity</div>
+        <div class="value" id="m-sev"></div>
+      </div>
+    </div>
+
+    <!-- Detail cards -->
+    <div class="grid4">
+      <div class="detail-card">
+        <div class="title">Log analysis</div>
+        <div id="d-log"></div>
+      </div>
+      <div class="detail-card">
+        <div class="title">Incident</div>
+        <div id="d-inc"></div>
+      </div>
+      <div class="detail-card">
+        <div class="title">Task (MCP Task Manager)</div>
+        <div id="d-task"></div>
+      </div>
+      <div class="detail-card">
+        <div class="title">Calendar event (MCP Calendar)</div>
+        <div id="d-cal"></div>
+      </div>
+      <div class="detail-card" style="grid-column:1/-1">
+        <div class="title">Note (MCP Notes)</div>
+        <div id="d-note"></div>
+      </div>
+    </div>
+
+    <!-- History tabs -->
+    <div class="card" style="margin-top:0">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('incidents',this)">Incidents</div>
+        <div class="tab" onclick="switchTab('tasks',this)">Tasks</div>
+        <div class="tab" onclick="switchTab('notes',this)">Notes</div>
+        <div class="tab" onclick="switchTab('calendar',this)">Calendar</div>
+      </div>
+      <div id="tab-incidents" class="tab-pane active">
+        <table><thead><tr><th>ID</th><th>Error</th><th>Severity</th><th>Status</th><th>Mode</th><th>Created</th></tr></thead>
+        <tbody id="tbl-incidents"></tbody></table>
+      </div>
+      <div id="tab-tasks" class="tab-pane">
+        <table><thead><tr><th>Task ID</th><th>Incident</th><th>Description</th><th>Priority</th><th>Assignee</th><th>Status</th></tr></thead>
+        <tbody id="tbl-tasks"></tbody></table>
+      </div>
+      <div id="tab-notes" class="tab-pane">
+        <table><thead><tr><th>Note ID</th><th>Incident</th><th>Content</th><th>Author</th><th>Tags</th></tr></thead>
+        <tbody id="tbl-notes"></tbody></table>
+      </div>
+      <div id="tab-calendar" class="tab-pane">
+        <table><thead><tr><th>Event ID</th><th>Incident</th><th>Title</th><th>Scheduled At</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody id="tbl-calendar"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const kv = (k,v) => `<div class="kv"><span class="k">${k}</span><span class="v" title="${v}">${v||'-'}</span></div>`;
+
+async function analyze(){
+  const log = document.getElementById('log').value.trim();
+  if(!log) return;
+  const useAI = document.getElementById('aiToggle').checked;
+  document.getElementById('btn').disabled = true;
+  document.getElementById('spinner').style.display = 'block';
+
+  try {
+    const res = await fetch('/analyze',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-USE-AI': useAI ? 'true':'false'},
+      body: JSON.stringify({log})
+    });
+    const d = await res.json();
+    renderResults(d);
+    await loadHistory();
+  } catch(e) {
+    alert('Error: '+e.message);
+  } finally {
+    document.getElementById('btn').disabled = false;
+    document.getElementById('spinner').style.display = 'none';
+  }
+}
+
+function renderResults(d){
+  document.getElementById('results').style.display = 'block';
+
+  // Trace steps
+  const traceItems = d.agent_trace || [];
+  document.getElementById('steps').innerHTML = traceItems.map(s=>`
+    <div class="step done">
+      <div class="dot"></div>
+      <span>${s.agent.replace('_agent','').replace('_',' ')}</span>
+      ${s.tool ? `<span class="tool-tag">${s.tool}</span>` : ''}
+    </div>
+  `).join('<span style="color:#334155;font-size:18px">›</span>');
+
+  // Metrics
+  const mode = d.log_analysis?.mode || 'fallback';
+  document.getElementById('m-mode').innerHTML = `<span class="badge ${mode==='AI'?'ai':'fallback'}">${mode}</span>`;
+  const sev = d.log_analysis?.severity || 'Low';
+  document.getElementById('m-sev').innerHTML = `<span class="sev-${sev}">${sev}</span>`;
+
+  // Detail cards
+  const la = d.log_analysis || {};
+  document.getElementById('d-log').innerHTML =
+    kv('Error', la.error) + kv('Summary', la.summary) + (la.suggested_action ? kv('Action', la.suggested_action):'');
+
+  const inc = d.incident || {};
+  document.getElementById('d-inc').innerHTML =
+    kv('ID', inc.id) + kv('Status', inc.status) + kv('Mode', inc.mode);
+
+  const t = d.task || {};
+  document.getElementById('d-task').innerHTML =
+    kv('Task ID', t.task_id) + kv('Priority', t.priority) + kv('Assignee', t.assignee) + kv('Status', t.status);
+
+  const ev = d.calendar_event || {};
+  document.getElementById('d-cal').innerHTML =
+    kv('Event ID', ev.event_id) + kv('Scheduled', (ev.scheduled_at||'').replace('T',' ').slice(0,16)) +
+    kv('Duration', ev.duration_minutes ? ev.duration_minutes+'m' : '-') + kv('Status', ev.status);
+
+  const n = d.note || {};
+  document.getElementById('d-note').innerHTML =
+    kv('Note ID', n.note_id) + kv('Author', n.author) + kv('Tags', n.tags) +
+    `<div class="kv"><span class="k">Content</span><span class="v" style="max-width:400px;white-space:normal;text-align:left">${(n.content||'').replace(/\n/g,'<br>')}</span></div>`;
+}
+
+async function loadHistory(){
+  const [incs, tasks, notes, cal] = await Promise.all([
+    fetch('/incidents').then(r=>r.json()),
+    fetch('/tasks').then(r=>r.json()),
+    fetch('/notes').then(r=>r.json()),
+    fetch('/calendar').then(r=>r.json()),
+  ]);
+
+  document.getElementById('tbl-incidents').innerHTML = incs.map(i=>
+    `<tr><td>${i.id}</td><td>${i.error}</td><td class="sev-${i.severity}">${i.severity}</td>
+     <td>${i.status}</td><td>${i.mode}</td><td>${(i.created_at||'').slice(0,16)}</td></tr>`
+  ).join('');
+
+  document.getElementById('tbl-tasks').innerHTML = tasks.map(t=>
+    `<tr><td>${t.task_id}</td><td>${t.incident_id}</td>
+     <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.description}">${t.description}</td>
+     <td>${t.priority}</td><td>${t.assignee}</td><td>${t.status}</td></tr>`
+  ).join('');
+
+  document.getElementById('tbl-notes').innerHTML = notes.map(n=>
+    `<tr><td>${n.note_id}</td><td>${n.incident_id}</td>
+     <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${n.content}">${n.content}</td>
+     <td>${n.author}</td><td>${n.tags}</td></tr>`
+  ).join('');
+
+  document.getElementById('tbl-calendar').innerHTML = cal.map(e=>
+    `<tr><td>${e.event_id}</td><td>${e.incident_id}</td><td>${e.title}</td>
+     <td>${(e.scheduled_at||'').replace('T',' ').slice(0,16)}</td>
+     <td>${e.duration_minutes}m</td><td>${e.status}</td></tr>`
+  ).join('');
+}
+
+function switchTab(name, el){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+}
+
+window.onload = () => loadHistory().catch(()=>{});
+</script>
+</body>
+</html>
